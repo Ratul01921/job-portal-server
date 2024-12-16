@@ -8,10 +8,6 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 app.use(cors())
 app.use(express.json())
 
-// DB_USER = job_hunter
-// DB_PASS = si9a0kKZU9RR2uLB
-
-
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.diltr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -61,7 +57,7 @@ async function run() {
 
   } finally {
     // Ensures that the client will close when you finish/error
-    // await client.close();
+    await client.close();
   }
 }
 run().catch(console.dir);
