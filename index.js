@@ -1,12 +1,18 @@
 const express = require('express')
 const cors = require('cors')
 const app = express();
+const jwt = require('jsonwebtoken')
+const cookieParser = require('cookie-parser');
 require('dotenv').config()
 const port = process.env.PORT || 5555;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-app.use(cors())
+app.use(cors({
+  origin: ['http://localhost:5173'],
+  credentials: true
+}))
 app.use(express.json())
+app.use(cookieParser());
 
 
 
@@ -29,13 +35,33 @@ async function run() {
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
-    // job related api
+    
 
     const jobsCollection = client.db('jobPortal').collection('jobs');
     const jobApplicationCollection = client.db('jobPortal').collection('job_applications');
 
+
+    // jwt related api
+    app.post('/jwt', async(req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRETE, {expiresIn: '1h'});
+      res
+      .cookie('token', token, {
+        httpOnly: true,
+        secure: false,
+      })
+      .send({success: true})
+    })
+
+
+    // job related api
     app.get('/jobs', async (req, res) => {
-      const cursor = jobsCollection.find();
+      const email = req.query.email;
+      let query = {};
+      if (email) {
+        query = { hr_email: email }
+      }
+      const cursor = jobsCollection.find(query);
       const result = await cursor.toArray()
       res.send(result)
     })
@@ -47,13 +73,47 @@ async function run() {
       res.send(result)
     })
 
+    app.post('/jobs', async (req, res) => {
+      const newJob = req.body;
+      const result = await jobsCollection.insertOne(newJob)
+      res.send(result)
+    })
+
     // job applications
+
+    app.get('/job-applications/jobs/:job_id', async (req, res) => {
+      const jobId = req.params.job_id;
+      const query = { job_id: jobId };
+      const result = await jobApplicationCollection.find(query).toArray()
+      res.send(result)
+    })
     app.post('/job-applications', async (req, res) => {
       const application = req.body;
       const result = await jobApplicationCollection.insertOne(application);
+
+
+      // not the best way
+      const id = application.job_id;
+      const query = { _id: new ObjectId(id) }
+      const job = await jobsCollection.findOne(query);
+      let newCount = 0;
+      if (job.applicationCount) {
+        newCount = job.applicationCount + 1;
+
+      }
+      else {
+        newCount = 1;
+      }
+
+      const filter = { _id: new ObjectId(id) }
+      const updateDoc = {
+        $set: {
+          applicationCount: newCount
+        }
+      }
+      const updateResult = await jobsCollection.updateOne(filter, updateDoc)
+
       res.send(result);
-
-
 
     })
     app.get('/job-application', async (req, res) => {
@@ -61,7 +121,7 @@ async function run() {
       const query = { applicant_email: email };
       const result = await jobApplicationCollection.find(query).toArray();
 
-
+      console.log('cuk cuk cookies', req.cookies)
       // fokira away to aggregate data
       for (const application of result) {
         console.log(application.job_id)
@@ -74,6 +134,18 @@ async function run() {
           application.company_logo = job.company_logo;
         }
       }
+      res.send(result)
+    })
+    app.patch('/job-applications/:id', async (req, res) => {
+      const id = req.params.id;
+      const data = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          status: data.status
+        }
+      }
+      const result = await jobApplicationCollection.updateOne(filter, updatedDoc);
       res.send(result)
     })
 
